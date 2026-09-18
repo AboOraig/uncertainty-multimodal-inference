@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+
+# Re-generate these by running the experiments -- see README.
+# Remove this block if you'd rather commit the results (e.g. for GitHub
+# Pages / portfolio viewing without asking a visitor to run the code).
+# results/
