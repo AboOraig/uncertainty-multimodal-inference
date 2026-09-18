@@ -1,0 +1,4 @@
+# Only needed for --engine torch. The numpy engine (default) has no
+# dependency on this and reproduces the same experiments with hand-derived
+# gradients instead of autograd -- see README for why both exist.
+torch
