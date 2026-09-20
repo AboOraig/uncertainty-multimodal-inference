@@ -52,19 +52,25 @@ def train_learned_fusion(train_batches, seed=0, hidden=HIDDEN_SIZES, epochs=EPOC
 
 
 def train_uncertainty_model(train_batches, seed=0, hidden=HIDDEN_SIZES, epochs=EPOCHS,
-                             batch_size=BATCH_SIZE, lr=LEARNING_RATE):
+                             batch_size=BATCH_SIZE, lr=LEARNING_RATE,
+                             feature_fn=per_sensor_features, input_dim=4):
     """
     Per-sensor MLP (shared weights, applied independently to each sensor's
-    own [obs, quality, mask]) -> predicted log-variance. Combined via
-    structured (precision-weighted) fusion, trained with the Gaussian NLL
-    of the fused estimate. See fusion_torch.py.
+    own features) -> predicted log-variance. Combined via structured
+    (precision-weighted) fusion, trained with the Gaussian NLL of the fused
+    estimate. See fusion_torch.py.
+
+    feature_fn/input_dim let this same loop serve a different per-sensor
+    feature set (e.g. the cross-sensor-residual follow-up,
+    data/simulate.py's per_sensor_features_v2, input_dim=5) without
+    duplicating the training loop.
     """
     torch.manual_seed(seed)
-    net = MLP([4, *hidden, 1])
+    net = MLP([input_dim, *hidden, 1])
     opt = optim.Adam(net.parameters(), lr=lr)
     history = []
 
-    feats = np.concatenate([per_sensor_features(b) for b in train_batches], axis=0)  # (n,3,4)
+    feats = np.concatenate([feature_fn(b) for b in train_batches], axis=0)  # (n,3,input_dim)
     obs = np.concatenate([b["obs"] for b in train_batches], axis=0)
     mask = np.concatenate([b["mask"] for b in train_batches], axis=0)
     true_pos = np.concatenate([b["true_pos"] for b in train_batches], axis=0)
@@ -84,7 +90,7 @@ def train_uncertainty_model(train_batches, seed=0, hidden=HIDDEN_SIZES, epochs=E
             f_b, o_b, m_b, t_b = feats_t[bidx], obs_t[bidx], mask_t[bidx], true_pos_t[bidx]
             nb = f_b.shape[0]
 
-            flat = f_b.reshape(nb * N_SENSORS, 4)
+            flat = f_b.reshape(nb * N_SENSORS, input_dim)
             raw = net(flat)
             log_var = bound_log_var(raw).reshape(nb, N_SENSORS)
 
@@ -100,12 +106,13 @@ def train_uncertainty_model(train_batches, seed=0, hidden=HIDDEN_SIZES, epochs=E
 
 
 def predict_log_var(net, feats):
-    """feats: (n,3,4) numpy -> (n,3) numpy predicted log-variance (bounded).
-    Same interface as training/train_numpy.py's predict_log_var()."""
-    n = feats.shape[0]
-    flat = feats.reshape(n * N_SENSORS, 4)
+    """feats: (n,3,input_dim) numpy -> (n,3) numpy predicted log-variance
+    (bounded). input_dim is inferred from feats itself. Same interface as
+    training/train_numpy.py's predict_log_var()."""
+    n, s, input_dim = feats.shape
+    flat = feats.reshape(n * s, input_dim)
     net.eval()
     with torch.no_grad():
         raw = net(torch.as_tensor(flat, dtype=torch.float32))
         log_var = bound_log_var(raw)
-    return log_var.numpy().reshape(n, N_SENSORS)
+    return log_var.numpy().reshape(n, s)

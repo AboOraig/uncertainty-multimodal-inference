@@ -1,12 +1,26 @@
 """
 inference/fusion_numpy.py
 ---------
-Fusion rules.
+Fusion rules -- a baseline ladder plus the proposed structured fusion.
 
-1. fixed_wls: the "conventional" baseline. Combines observations with
-   inverse-variance weights computed ONCE from nominal (training-average)
-   per-sensor noise, never adapted to instance- or degradation-level
-   conditions.
+Non-learned WLS baselines (all closed-form, no training, so they are
+deterministic given a fixed evaluation set -- zero seed variance):
+
+  - fixed_wls:            "conventional" baseline. Inverse-variance weights
+                           from nominal (spec-sheet, d=0) per-sensor noise,
+                           never adapted to instance- or field-level
+                           conditions.
+  - quality_weighted_wls: naive ADAPTIVE baseline. Trusts each sensor's own
+                           self-reported quality signal directly as its
+                           noise std, with no learning involved at all.
+                           This is the baseline that answers "do you even
+                           need a network, or does the raw quality signal
+                           already get you most of the way there?"
+  - oracle_wls:            upper-bound baseline. Uses the TRUE per-sample
+                           per-sensor noise std, which no real model has
+                           access to (only the simulator/evaluation code
+                           does). Shows the ceiling any adaptive method is
+                           chasing.
 
 2. structured_fusion: given a PER-SENSOR predicted log-variance (from the
    uncertainty MLP), combine observations via precision weighting:
@@ -36,16 +50,38 @@ import numpy as np
 EPS = 1e-6
 
 
-def fixed_wls(obs, mask, nominal_var):
+def _wls(obs, mask, var):
     """
-    obs: (n, 3, 2), mask: (n, 3), nominal_var: (3,) fixed per-sensor variance.
-    Returns fused (n, 2) estimate. Weights never adapt to instance conditions.
+    Shared WLS core. obs: (n,3,2), mask: (n,3), var: broadcastable to (n,3)
+    -- either a fixed (3,) per-sensor variance, or a full (n,3) per-instance
+    variance array. All three WLS baselines below are thin wrappers around
+    this, differing only in what `var` they supply.
     """
-    w = mask / nominal_var[None, :]          # (n, 3)
-    w = w + EPS                               # floor so it's never exactly zero
-    S = w.sum(axis=1, keepdims=True)          # (n, 1)
+    w = mask / var + EPS                      # floor so it's never exactly zero
+    S = w.sum(axis=1, keepdims=True)
     mu = (w[:, :, None] * obs).sum(axis=1) / S
     return mu
+
+
+def fixed_wls(obs, mask, nominal_var):
+    """nominal_var: (3,) fixed per-sensor variance. Weights never adapt to
+    instance conditions -- the "conventional" baseline."""
+    return _wls(obs, mask, nominal_var[None, :])
+
+
+def quality_weighted_wls(obs, mask, quality):
+    """quality: (n,3) self-reported per-instance quality proxy, used
+    directly as the assumed std (var = quality^2). Adaptive, but not
+    learned -- tests whether a neural network is even necessary."""
+    return _wls(obs, mask, quality ** 2)
+
+
+def oracle_wls(obs, mask, oracle_var):
+    """oracle_var: (n,3) GROUND-TRUTH total per-instance variance, including
+    the realized bias-fault contribution (evaluation-only information --
+    see data/simulate.py's oracle_var for why raw noise std alone is NOT
+    enough to make this a genuine ceiling). Upper-bound baseline."""
+    return _wls(obs, mask, oracle_var)
 
 
 def structured_fusion_forward(obs, mask, log_var):

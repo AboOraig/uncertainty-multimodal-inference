@@ -40,6 +40,53 @@ def binned_trend(x, y, nbins=25):
     return bin_x, bin_y, bin_y_std
 
 
+def sensor_identification_accuracy(scores, degraded_sensor, mask, d_arr, d_threshold=1e-9):
+    """
+    Failure-analysis metric: does argmax(scores) actually point at the
+    truly degraded sensor? This directly operationalizes the "identify
+    degraded observation sources" claim -- previously implied but never
+    measured.
+
+    scores: (n,3) something used to rank sensors by suspected
+        unreliability (predicted variance, or raw quality as a cheap
+        heuristic comparator) -- higher = more suspected degraded.
+    degraded_sensor: (n,) ground-truth index of the sample's stressed sensor.
+    mask: (n,3) -- samples where the true degraded sensor was dropped out
+        are excluded (you can't identify a sensor that isn't there).
+    d_arr: (n,) actual degradation level for that sample. At d=0 there is
+        no real asymmetric degradation (the label is structurally present
+        but noise is equal across sensors), so those samples are excluded
+        by default.
+
+    Returns (accuracy, n_valid). accuracy is np.nan if n_valid == 0.
+    """
+    predicted = np.argmax(scores, axis=1)
+    target_observed = mask[np.arange(len(mask)), degraded_sensor] > 0.5
+    valid = (d_arr > d_threshold) & target_observed
+    if valid.sum() == 0:
+        return np.nan, 0
+    acc = (predicted[valid] == degraded_sensor[valid]).mean()
+    return float(acc), int(valid.sum())
+
+
+def aggregate_seeds(list_of_arrays):
+    """
+    list_of_arrays: list of length n_seeds, each an array/list of the same
+    shape (e.g. an RMSE-vs-degradation curve from one training seed).
+    Returns (mean, std), both with that shape, using nan-safe reduction
+    (some per-seed entries, e.g. sensor-ID accuracy at d=0, are legitimately
+    undefined/nan across every seed -- that column's mean/std is then nan
+    too, which is correct, not a bug; the warning is suppressed since it's
+    expected).
+    """
+    arr = np.asarray(list_of_arrays, dtype=float)
+    with np.errstate(invalid="ignore"):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            return np.nanmean(arr, axis=0), np.nanstd(arr, axis=0)
+
+
 def nees_calibration(mu, V, true_pos, confidence_levels=None):
     """
     Experiment D: NEES (Normalized Estimation Error Squared) consistency
