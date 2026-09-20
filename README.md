@@ -22,9 +22,9 @@ see [`docs on the two engines`](#two-engines-numpy-vs-pytorch) below.
 Weighted least-squares (WLS) sensor fusion is standard practice, but the
 weights are almost always **fixed** — set once from a sensor's spec sheet and
 never adapted to what's actually happening in the field. This project asks a
-narrow, testable question: if you instead *learn* per-sensor uncertainty from
+narrow, testable question: if we instead *learn* per-sensor uncertainty from
 each sensor's own observation and self-reported quality signal, and feed that
-into the same WLS-style fusion rule, do you get (a) a genuine accuracy
+into the same WLS-style fusion rule, do we get (a) a genuine accuracy
 improvement, (b) uncertainty estimates that are actually correlated with real
 error rather than just "more knobs," and (c) calibration that survives
 conditions the model never saw in training?
@@ -118,7 +118,7 @@ to a ladder spanning "no adaptation at all" to "perfect information":
 | Method | What it does | Learned? |
 |---|---|---|
 | **Fixed WLS** | Inverse-variance weighting using nominal (spec-sheet, `d=0`) per-sensor variances. Never adapts to field conditions. | No |
-| **Quality-weighted WLS** | Trusts each sensor's self-reported quality signal *directly* as its assumed std (`var = quality²`). Adaptive, but zero learning involved — the baseline that asks "do you even need a network?" | No |
+| **Quality-weighted WLS** | Trusts each sensor's self-reported quality signal *directly* as its assumed std (`var = quality²`). Adaptive, but zero learning involved — the baseline that asks "do we even need a network?" | No |
 | **Learned fusion** | An MLP maps raw multimodal observations directly to a position estimate (MSE-trained). Learned capacity, but no explicit notion of uncertainty. | Yes |
 | **Uncertainty-aware inference (proposed)** | A small MLP scores each sensor *independently* on its own `[obs_x, obs_y, quality, mask]` and predicts a per-sensor log-variance. The 3 predictions are combined by precision-weighted fusion (`w_i = mask_i / σ_i²`) — a one-shot Kalman/WLS update with *learned* covariances — trained end-to-end with the Gaussian NLL of the fused estimate. | Yes |
 | **Oracle WLS** | Inverse-variance weighting using the *true* per-sample variance — including the realized bias-fault contribution, not just Gaussian noise std (see `data/simulate.py`'s `oracle_var` for why that distinction matters). No real model has access to this; it's the ceiling. | N/A (uses ground truth) |
@@ -506,7 +506,7 @@ computed:
   gradient automatically. No manual derivative bookkeeping.
 
 Comparing `inference/fusion_numpy.py` to `inference/fusion_torch.py` is a
-reasonably concrete illustration of what autograd buys you.
+reasonably concrete illustration of what autograd buys.
 
 ## Installation & usage
 
