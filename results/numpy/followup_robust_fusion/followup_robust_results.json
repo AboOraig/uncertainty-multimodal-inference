@@ -1,0 +1,26 @@
+{
+  "tuned_c": {
+    "huber_quality": 50.0,
+    "tukey_quality": 50.0,
+    "huber_learned": 50.0,
+    "tukey_learned": 50.0
+  },
+  "validation_baseline_rmse": 0.7440250692977206,
+  "mean_rmse": {
+    "oracle_ceiling": 0.6554865331461089,
+    "quality_heuristic": 0.7011231336197661,
+    "quality_plus_huber": 0.7011234884876474,
+    "quality_plus_tukey": 0.7011661877816047,
+    "v1_learned": 0.7053530548246094,
+    "v1_plus_huber": 0.7020085438026158,
+    "v1_plus_tukey": 0.7020356853959706
+  },
+  "any_robust_variant_beats_quality_heuristic": false,
+  "mean_sensorid_accuracy": {
+    "quality_heuristic": 0.7485190877273938,
+    "quality_plus_huber": 0.6075649894153378,
+    "quality_plus_tukey": 0.6076035853954854,
+    "v1_plus_huber_seed0": 0.6051989058117567,
+    "v1_plus_tukey_seed0": 0.6052321867547945
+  }
+}

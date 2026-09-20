@@ -1,0 +1,29 @@
+{
+  "v1_reference": {
+    "mean_rmse": 0.7053530548246094,
+    "pearson_r": 0.7312056864041481
+  },
+  "quality_heuristic_mean_rmse": 0.7011231336197661,
+  "oracle_mean_rmse": 0.6554865331461089,
+  "fixed_wls_mean_rmse": 0.9890848340068112,
+  "ablations": {
+    "A_no_quality": {
+      "mean_rmse": 1.1840711620469442,
+      "mean_sensorid": 0.37267857703119317,
+      "pearson_r": 0.36368870039935886,
+      "pearson_r_std": 0.054513425164977446
+    },
+    "B_mse_surrogate": {
+      "mean_rmse": 0.7003921015495131,
+      "mean_sensorid": 0.7488491638427424,
+      "pearson_r": 0.7578291490562485,
+      "pearson_r_std": 0.0023298767901192346
+    },
+    "C_separate_nets": {
+      "mean_rmse": 0.7153938274788852,
+      "mean_sensorid": 0.7954254983738825,
+      "pearson_r": 0.6509449843306385,
+      "pearson_r_std": 0.044357532390730744
+    }
+  }
+}

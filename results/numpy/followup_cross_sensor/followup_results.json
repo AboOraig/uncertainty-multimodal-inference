@@ -1,0 +1,16 @@
+{
+  "mean_rmse": {
+    "v1": 0.7053530548246094,
+    "v2": 0.7043287249128429,
+    "quality_heuristic": 0.7011231336197661,
+    "oracle_ceiling": 0.6554865331461089
+  },
+  "mean_sensorid_accuracy": {
+    "v1": 0.7277853537972431,
+    "v2": 0.7275232318762337,
+    "quality_heuristic": 0.7485190877273938
+  },
+  "v2_beats_quality_heuristic_on_rmse": false,
+  "v2_beats_v1_on_rmse": true,
+  "v2_beats_quality_heuristic_on_sensorid": false
+}
