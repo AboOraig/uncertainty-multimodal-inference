@@ -555,7 +555,7 @@ to `results/<engine>/followup_cross_sensor/`. Follow-up 2 writes 1 figure and
 All simulation, training, and experiment hyperparameters live in
 `configs/default.py` — nothing is hardcoded elsewhere in the codebase.
 
-## Honest limitations
+## Limitations
 
 - The core result is humbling by design: the proposed method does not
   clearly outperform a two-line non-learned heuristic on raw accuracy or
