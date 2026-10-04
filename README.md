@@ -184,8 +184,9 @@ having variable weights at all.
 
 Two things are true at once here, and both matter:
 
-1. **The shuffled ablation has the highest mean RMSE of the six** (1.200), and it is
-   worse than plain fixed WLS from `d = 0.4` upward (not at every level).
+1. **The shuffled ablation has the highest mean RMSE of the six** (1.200). It is
+   worse than plain fixed WLS at every level, and the worst of the six methods
+   from `d = 0.4` upward (learned fusion is worse at `d <= 0.3`).
    Decorrelating the predicted variances from the actual per-sample error
    removes the benefit, so the correlation with error is what matters, not
    merely having variable weights.
