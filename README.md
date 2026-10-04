@@ -120,8 +120,8 @@ to a ladder spanning "no adaptation at all" to "perfect information":
 | **Fixed WLS** | Inverse-variance weighting using nominal (spec-sheet, `d=0`) per-sensor variances. Never adapts to field conditions. | No |
 | **Quality-weighted WLS** | Trusts each sensor's self-reported quality signal *directly* as its assumed std (`var = quality²`). Adaptive, but zero learning involved — the baseline that asks "do you even need a network?" | No |
 | **Learned fusion** | An MLP maps raw multimodal observations directly to a position estimate (MSE-trained). Learned capacity, but no explicit notion of uncertainty. | Yes |
-| **Uncertainty-aware inference (proposed)** | A small MLP scores each sensor *independently* on its own `[obs_x, obs_y, quality, mask]` and predicts a per-sensor log-variance. The 3 predictions are combined by precision-weighted fusion (`w_i = mask_i / σ_i²`) — a one-shot Kalman/WLS update with *learned* covariances — trained end-to-end with the Gaussian NLL of the fused estimate. | Yes |
-| **Oracle WLS** | Inverse-variance weighting using the *true* per-sample variance — including the realized bias-fault contribution, not just Gaussian noise std (see `data/simulate.py`'s `oracle_var` for why that distinction matters). No real model has access to this; it's the ceiling. | N/A (uses ground truth) |
+| **Uncertainty-aware inference (v1)** | A small MLP scores each sensor *independently* on its own `[obs_x, obs_y, quality, mask]` and predicts a per-sensor log-variance. The 3 predictions are combined by precision-weighted fusion (`w_i = mask_i / σ_i²`) — a one-shot Kalman/WLS update with *learned* covariances — trained end-to-end with the Gaussian NLL of the fused estimate. | Yes |
+| **Oracle WLS** | Inverse-variance weighting using the *true* per-sample variance — including the realized bias-fault contribution, not just Gaussian noise std (see `data/simulate.py`'s `oracle_var` for why that distinction matters). No real model has access to this; it serves as a reference, not a bound. | N/A (uses ground truth) |
 
 ## Reproducibility protocol
 
@@ -173,24 +173,25 @@ having variable weights at all.
 
 | Method | Mean RMSE |
 |---|---|
-| Oracle WLS (ceiling) | 0.655 |
-| **Uncertainty-aware (proposed)** | **0.705** |
+| Oracle-variance WLS (reference) | 0.655 |
+| Uncertainty-aware (v1) | 0.705 |
 | Quality-weighted WLS (heuristic, not learned) | 0.701 |
 | Fixed WLS (baseline) | 0.989 |
 | Learned fusion (no uncertainty) | 1.065 |
-| Uncertainty-aware, SHUFFLED (Exp. C ablation) | 1.200 |
+| Uncertainty-aware, shuffled (ablation) | 1.200 |
 
 Two things are true at once here, and both matter:
 
-1. **The shuffled ablation is the worst of all six** — worse even than plain
-   fixed WLS. The learned uncertainty model is doing real, structured work;
-   decorrelating its output from actual error actively hurts, it isn't just
-   adding harmless capacity.
-2. **The proposed method does *not* clearly beat the quality-weighted
-   heuristic** (0.705 vs. 0.701 — within noise, and the heuristic is
-   marginally ahead at nearly every point on the sweep, not just on average).
-   Both sit consistently ~0.05 RMSE above the oracle ceiling. See
-   **"Tier 1 finding"** below for why, and what was tried about it.
+1. **The shuffled ablation has the highest mean RMSE of the six** (1.200), and it is
+   worse than plain fixed WLS from `d = 0.4` upward (not at every level).
+   Decorrelating the predicted variances from the actual per-sample error
+   removes the benefit, so the correlation with error is what matters, not
+   merely having variable weights.
+2. **The learned model does *not* beat the quality-weighted heuristic**
+   (0.705 vs. 0.701, a near-tie; the heuristic has the lower RMSE at 14 of 16
+   levels of the sweep). Both stay about 0.05 RMSE above the oracle-variance
+   reference. Evaluation-draw noise is about 0.01-0.02 RMSE, so differences of
+   that size are not interpreted. See "Tier 1 finding" below.
 
 ### Experiment D — does calibration survive an unseen sensor regime? (Graph 3)
 
@@ -226,15 +227,16 @@ error on average?
 
 **Result:** both the learned model and the quality-argmax heuristic climb
 from chance level (33%) to >90% identification accuracy as degradation
-increases, and — consistent with the RMSE finding above — the heuristic is
-consistently 1–3 points **ahead** of the learned model, not behind it.
+increases, and the heuristic is 1.4-3.3 points ahead of the learned model.
+This metric is descriptive: the `argmax` also ranks sensors that were dropped
+out, so absolute values are depressed when another sensor is missing.
 
 ## Tier 1 finding, and two follow-ups
 
-The honest headline result of this round of work is **not** "the proposed
+The headline result of this round of work is **not** "the proposed
 method wins." It's: a two-line, non-learned heuristic (`variance = quality²`)
 matches or marginally beats a trained neural network on every metric tested.
-Two concrete, diagnosable reasons, not a mystery:
+Two candidate explanations (neither tested directly):
 
 1. **The quality proxy is already a strong noise estimator by construction**
    (`quality ≈ true_std × fault_boost × (1 + 15% noise)` in `data/simulate.py`)
@@ -255,7 +257,7 @@ deterministic bias, and the naive oracle would over-trust it. That oracle was
 sometimes *worse* than the heuristic, which is a contradiction (an oracle with
 strictly more information should never lose). Fixed in `data/simulate.py` by
 having `oracle_var` include the realized bias contribution, which restored
-the correct ordering (oracle ≤ everything else, always).
+the expected ordering (oracle-variance WLS has the lowest RMSE in the reported results).
 
 ### Follow-up: does a cross-sensor feature fix it?
 
@@ -268,17 +270,15 @@ against a leave-one-out consensus of the *other* observed sensors
 
 ![Follow-up RMSE](results/numpy/followup_cross_sensor/followup_rmse_comparison.png)
 
-**Result: the hypothesis was only weakly supported.** The cross-sensor
-feature gives a small, within-noise improvement over the v1 model (mean RMSE
-0.704 vs. 0.705) but still does **not** beat the quality heuristic (0.701),
-and is very slightly *worse* on sensor-identification accuracy (72.8% vs.
-72.8% v1, vs. 74.9% heuristic — essentially a wash, if anything marginally
-negative). This is reported as a genuine negative/marginal result, not
-downplayed.
+**Result: no meaningful improvement.** The cross-sensor feature changes mean
+RMSE from 0.7054 to 0.7043 (a difference of 0.0010, not interpreted: the two
+variants are separate network instances), and it does not reach the quality
+heuristic (0.7011). Sensor-identification accuracy is unchanged (0.7275 vs.
+0.7278 for v1; 0.7485 for the heuristic).
 
-**Why it likely didn't work, and what that suggests:** all three
+**A possible reading (a hypothesis, not tested):** all three
 adaptive/learned methods — heuristic, v1, v2 — sit at a nearly *identical*,
-persistent ~0.05 RMSE gap above the oracle ceiling across the entire
+persistent ~0.05 RMSE gap above the oracle-variance reference across the entire
 degradation sweep (visible as three overlapping curves in the figure above).
 That's a different signature than "the model can't tell which sensor is
 bad" (Graph 4 shows all methods clearly can, at >90% accuracy under strong
@@ -330,38 +330,30 @@ silently inflates a result; it's reported here rather than smoothed over.
 
 ![Robust fusion comparison](results/numpy/followup_robust_fusion/followup_robust_rmse_comparison.png)
 
-**Result: the core hypothesis is not supported, with one honest exception.**
-At full convergence, the tuned `c` for both Huber and Tukey landed at the
-edge of the search grid (`c=50`, extended and confirmed to plateau there) —
-meaning the validation data wants the *most permissive* setting possible,
-which degenerates to a near no-op. On top of the quality heuristic, robust
-IRLS gives **zero measurable benefit** (0.7011 quality vs. 0.7011
-quality+Huber — identical to five decimal places, i.e. genuinely converging
-to the same fixed point rather than finding something better). The exception:
-layered on top of the *weaker* v1 learned model, IRLS refinement gives a
-small but real improvement (0.705 → 0.702 mean RMSE), closing about 80% of
-v1's gap to the quality heuristic without fully closing it. A separate,
-consistent negative: using the final IRLS weight as a "how suspected-bad is
-this sensor" score is a noticeably *worse* sensor-identification signal than
-just using quality or the learned variance directly (accuracy drops from
-~0.75 to ~0.61) — the iterative reweighting appears to blur the clean ranking
-signal the raw prior already provided, even though it barely moves the fused
-point estimate.
+**Result: no benefit over the quality heuristic.** The validation data selected
+the largest threshold in the grid, `c = 50`, for both psi-functions and both
+priors. At that setting almost no sensor is down-weighted, so IRLS is close to
+plain weighted fusion: Huber matches Quality WLS to four decimals (0.7011) and
+Tukey is within 0.0001.
 
-**Interpretation:** classical robust statistics need enough independent
-observations to distinguish "outlier" from "natural spread" — with only 3
-sensors, the breakdown-point safety margin is thin, and this experiment
-suggests that margin is too thin here for hard gating to pay off over an
-already-strong prior, mirroring the cross-sensor-feature follow-up's
-negative result for essentially the same underlying reason (both approaches
-try to extract more signal from a 3-way "committee" than a committee that
-small reliably provides). The mild win for the learned model, but not for
-the quality heuristic, is the one place these two follow-ups disagree, and
-is worth a real explanation rather than a shrug: v1's own precision weighting
-occasionally trusts an imperfect learned variance estimate more than it
-should, and a light robustness pass partially corrects exactly that,
-whereas the quality heuristic's precision weighting was already close to
-optimal-for-this-mechanism, leaving robust refinement nothing to fix.
+The v1 rows differ from plain v1 by 0.0033 (0.7054 to 0.7020). This is **not**
+interpreted as a benefit of robust reweighting: the v1 baseline and the v1
+used for IRLS are different network instances, and plain fusion was not
+computed on the latter. The v1 + IRLS sensor-identification entry is seed 0
+only.
+
+**Sensor identification with IRLS weights:** ranking sensors by the final IRLS
+weight gives 0.608 for the heuristic prior, below the heuristic's 0.749. This is
+largely a property of the metric: a dropped sensor receives almost zero weight
+and is therefore ranked most suspect, so the stressed sensor is missed whenever
+another sensor is dropped (probability of no other dropout is about 0.81, and
+0.749 x 0.81 is about 0.61).
+
+**Interpretation (a hypothesis):** robust estimators rely on redundancy to
+separate a true outlier from natural spread. With only three sensors there is
+little, which may explain why the validation data preferred no reweighting. It
+is consistent with the cross-sensor result above. Repeating the experiments
+with more sensors would test it directly.
 
 ## Tier 2: stronger shifts, full calibration curves, and three more ablations
 
@@ -386,34 +378,31 @@ severity):
 ![Shift RMSE](results/numpy/tier2_shift_taxonomy/tier2_shift_rmse.png)
 ![Shift calibration](results/numpy/tier2_shift_taxonomy/tier2_shift_calibration.png)
 
-**This is where the project's most genuine wins for the learned model show
-up** — nowhere else in this project does v1 clearly beat the quality
-heuristic, but here it does, twice:
+Mean RMSE per shift (5 training seeds, `d = 0.5`):
 
-- **Quality corruption (severe):** v1 RMSE 1.153 vs. quality heuristic 1.328
-  — a ~13% relative improvement, and the largest gap between any two methods
-  anywhere in this project. The oracle stays at 0.614 (barely different from
-  in-distribution), confirming the *true* noise is unaffected — only the
-  self-reported signal is corrupted. The heuristic, which takes quality at
-  face value, gets fully misled; v1 apparently learned something more like a
-  damped, partially-regularized transform of quality rather than trusting it
-  literally, giving it real resilience here.
-- **Deceptive sensor:** v1 beats the heuristic at both severities (0.829 vs.
-  0.838 mild; 1.027 vs. 1.063 severe) — smaller margins, same direction.
-- **Correlated (multi-sensor) degradation:** no advantage either way (v1 and
-  the heuristic stay tied), but calibration stays low (~0.03 ECE) even at
-  the most extreme, never-trained-on setting (all 3 sensors degraded at
-  once) — a genuine positive robustness result.
-- Calibration damage ranks clearly: quality-corruption (severe) is the worst
-  by far (ECE 0.208), heavy-tailed noise next (0.119), deceptive and mild
-  quality-corruption moderate (0.05–0.065), correlated degradation barely
-  moves it (~0.03).
+| Shift | Fixed WLS | Quality WLS | v1 | Oracle-var. WLS |
+|---|---|---|---|---|
+| In-distribution | 0.856 | 0.678 | 0.678 | 0.621 |
+| Quality corruption, severe | 0.838 | 1.328 | 1.153 | 0.614 |
+| Deceptive sensor, severe | 0.857 | 1.063 | 1.027 | 0.620 |
+| Deceptive sensor, mild | 0.848 | 0.838 | 0.830 | 0.595 |
+| Correlated, all 3 sensors | 1.243 | 1.198 | 1.210 | 1.163 |
 
-The honest reading: the learned model's advantage over a trivial heuristic
-isn't in typical conditions (Tier 1) — it's specifically in conditions that
-attack the **reliability of the quality signal itself**, which a heuristic
-that trusts quality literally has no defense against, and a model trained
-with a regularizing objective partially does.
+- **Quality corruption (severe):** v1 is less affected than the heuristic
+  (1.153 vs. 1.328), but **fixed weighting is better than both (0.838)**. The
+  oracle is barely changed, so only the self-reported signal is corrupted.
+- **Deceptive sensor (severe):** same ordering (1.027 vs. 1.063, fixed 0.857).
+  The mild-severity difference (0.830 vs. 0.838) is within evaluation-draw
+  noise and is not interpreted.
+- **Correlated degradation:** v1 and the heuristic are tied, and calibration
+  stays low (ECE about 0.03) even with all three sensors degraded.
+- **Calibration damage** is largest under severe quality corruption (ECE 0.208),
+  then severe heavy-tailed noise (0.119), then the deceptive and mild
+  quality-corruption shifts (0.035-0.065); correlated degradation barely moves it.
+
+A possible explanation for v1's smaller loss relative to the heuristic is that
+its predicted variance is bounded (log-variance in [-4, 4]) while the heuristic's
+weights are not. This was **not** tested (for example by clipping the heuristic).
 
 ### Full calibration curves, sharpness, and recalibration (`experiments/tier2_calibration.py`)
 
@@ -444,15 +433,11 @@ in the sharpness companion plot:
 
 **Median predicted sharpness is essentially identical between the two noise
 families at every degradation level** — the model doesn't widen its
-intervals under heavy tails at all, yet ECE differs 5×. A scalar
+intervals under heavy tails at all, yet ECE differs about fivefold. A scalar
 recalibration can only fix a uniform too-narrow/too-wide *scale* problem;
-this is a distributional *shape* mismatch (Gaussian assumption vs. actual
-heavy tails) that no single number can correct. This connects directly to
-follow-up 2's finding that robust (Tukey) reweighting didn't help either —
-both results point to the same underlying theme: this project's hardest
-failure modes are shape/structural mismatches, not scale problems, and the
-tools that only correct scale (variance inflation, scalar recalibration)
-predictably don't touch them.
+this is consistent with a distributional *shape* mismatch (Gaussian
+assumption vs. actual heavy tails), which one scalar cannot correct. Only one
+scalar recalibration (moment matching) was tried.
 
 ### Three more ablations (`experiments/tier2_ablations.py`)
 
@@ -460,33 +445,29 @@ predictably don't touch them.
 
 | Ablation | Mean RMSE | Mean sensor-ID acc. | Pearson r (± std across seeds) |
 |---|---|---|---|
-| v1 (reference) | 0.705 | 0.75 | 0.731 |
-| A: no quality feature | **1.184** | 0.373 (≈ chance) | 0.364 ± 0.055 |
+| v1 (reference) | 0.705 | 0.728 | 0.731 |
+| A: no quality feature | 1.184 | 0.373 (≈ chance) | 0.364 ± 0.055 |
 | B: MSE surrogate loss | 0.700 | 0.749 | 0.758 ± 0.002 |
-| C: separate (unshared) nets | 0.715 | **0.795** | 0.651 ± 0.044 |
+| C: separate (unshared) nets | 0.715 | 0.795 | 0.651 ± 0.044 |
 
-- **A confirms, decisively, that quality is doing essentially all the
-  work**: stripped of it, the model is *worse than fixed WLS* (1.184 vs.
-  0.989) and its sensor-identification accuracy collapses to barely above
-  chance. Trying to adapt without real information is actively harmful
-  compared to not adapting at all.
-- **B is a genuine surprise**: a much simpler, fully decoupled per-sensor
-  MSE regression (predicting `log((obs_i - true_pos)²)` directly, with zero
-  coupling through the fusion rule) matches or marginally *beats* the
-  theoretically-motivated NLL-through-fusion objective that v1 actually
-  uses. The coupling to the fusion rule — the main conceptual argument for
-  training this way rather than a simpler two-stage regression — doesn't
-  appear to earn its keep in this setup.
-- **C is a genuine trade-off, not a clean win either way**: unshared
-  networks get slightly worse RMSE but meaningfully *better*
-  sensor-identification accuracy — and dramatically higher seed-to-seed
-  variance (correlation std ~20× larger than the shared model). Weight
-  sharing buys stability more than it buys accuracy.
+- **A:** without the quality feature the model is worse than fixed WLS (1.184
+  vs. 0.989) and sensor-identification falls to 0.373, close to chance. The
+  quality signal is the dominant useful per-sensor input for this architecture.
+- **B:** a decoupled per-sensor MSE regression onto `log((obs_i - true_pos)^2)`
+  matches the NLL-through-fusion objective (0.700 vs. 0.705, a difference not
+  interpreted). Under these conditions the coupling to the fusion rule gives no
+  visible advantage. B is also trained on the rows of dropped sensors, so its
+  sensor-ID value is not directly comparable with v1's.
+- **C:** unshared networks have slightly worse RMSE (0.715 vs. 0.705), higher
+  sensor-ID (0.795 vs. 0.728, subject to the dropped-sensor effect) and a
+  larger seed-to-seed spread of the correlation (0.044 vs. 0.012). This cannot
+  be attributed to weight sharing alone: separate networks implicitly know which
+  sensor they serve, and no shared network with a sensor-index input was run.
 
-Note: these three ablations were only implemented for the NumPy engine
-(gradients verified numerically the same way as everywhere else in this
-project — see `tests/test_gradients.py`'s pattern); torch equivalents were
-not built, consistent with the follow-ups in the Tier-1 section.
+Note: these three ablations were only implemented for the NumPy engine. They
+reuse the MLP backward pass checked in `tests/test_gradients.py`; the
+MSE-surrogate loss gradient has no separate finite-difference test. No PyTorch
+equivalents were built.
 
 ## Two engines: NumPy vs. PyTorch
 
@@ -497,9 +478,10 @@ computed:
 - **NumPy engine** (`--engine numpy`, default, no extra dependency): the
   MLP's backward pass and the structured-fusion NLL's gradient w.r.t.
   predicted log-variance are both **hand-derived** (the derivation is in
-  `inference/fusion_numpy.py`'s docstring) and implemented directly. Every
-  hand-derived gradient is checked against finite differences in
-  `tests/test_gradients.py` before being trusted.
+  `inference/fusion_numpy.py`'s docstring) and implemented directly. The
+  fusion-NLL gradient and the MLP backward pass are checked against finite
+  differences in `tests/test_gradients.py` (observed max absolute error 1.3e-6
+  for the NLL gradient on a small random batch, below 1e-9 for the MLP).
 - **PyTorch engine** (`--engine torch`, requires `requirements-torch.txt`):
   the same forward computation is written in `torch` tensors
   (`inference/fusion_torch.py`), and `loss.backward()` computes the identical
@@ -511,7 +493,7 @@ reasonably concrete illustration of what autograd buys you.
 ## Installation & usage
 
 ```bash
-git clone <this-repo-url>
+git clone https://github.com/AboOraig/uncertainty-multimodal-inference
 cd uncertainty-aware-multimodal-inference
 pip install -r requirements.txt
 
@@ -555,61 +537,52 @@ to `results/<engine>/followup_cross_sensor/`. Follow-up 2 writes 1 figure and
 All simulation, training, and experiment hyperparameters live in
 `configs/default.py` — nothing is hardcoded elsewhere in the codebase.
 
-## Honest limitations
+## Limitations
 
-- The core result is humbling by design: the proposed method does not
-  clearly outperform a two-line non-learned heuristic on raw accuracy or
-  sensor identification (see "Tier 1 finding" above). The value it adds —
-  confirmed to be genuine by the shuffled-uncertainty ablation, not
-  incidental — is smaller than a first read of Graph 2 alone would suggest,
-  and requires the baseline ladder to see clearly.
-- The one concrete fix attempted (cross-sensor residual features) gave only
-  a marginal, within-noise improvement and did not close the gap. The
-  leave-one-out consensus reference it relies on is itself noisy with only
-  3 sensors, which likely limits how informative that feature can be here.
-- A second attempt (classical Huber/Tukey robust fusion, replacing soft
-  precision weighting with something closer to hard gating) also did not
-  beat the quality heuristic at full convergence — it only helped the
-  weaker learned v1 model partially catch up to the heuristic, not surpass
-  it. Both negative results point the same direction: with only 3 sensors,
-  neither a learned nor a classical mechanism for exploiting cross-sensor
-  disagreement has much room to work with. More sensors (a genuinely larger
-  "committee") is the more likely lever than a better algorithm on this
-  exact simulated setup, and is untested here.
-- Fully synthetic data — no real sensors, so the *absolute* numbers don't
-  transfer, only the methodology and qualitative findings.
-- The quality/SNR proxy is a fairly strong, always-present feature; real
-  sensors' self-diagnostics are often less reliable or absent for some fault
-  types, which would make the problem harder (and might give a learned
-  model more genuine room to add value than it had here).
-- The fusion is a single-shot (per-instance) estimate, not a temporal filter.
-  A natural extension is a recurrent/Kalman formulation where the learned
-  per-modality covariance feeds a proper predict → update cycle over time.
-- No hyperparameter search was done — architecture, learning rate, and
-  epoch count were chosen once and not tuned. Results are representative,
-  not optimized.
-- Real data is a natural next step (e.g. a robotics/SLAM dataset with
-  multimodal sensors and ground truth); it would require constructing a
-  `quality` proxy from whatever real per-sensor confidence metadata is
-  available, and using deliberately held-out conditions (e.g. weather) to
-  play the role of Experiment D's distribution shift.
-- Tier 2 (shift taxonomy, full calibration curves, and the three additional
-  ablations) was only run on the NumPy engine; the torch engine covers only
-  the core Tier-1 pipeline. All Tier 2 gradients that needed new backward
-  passes (the MSE-surrogate and separate-nets ablations) were numerically
-  verified the same way as everywhere else in this project before trusting
-  any result from them.
-- The recalibration result is itself a limitation worth restating plainly:
-  a single global scalar cannot fix a shape mismatch (heavy-tailed vs.
-  Gaussian errors), so any real fix for shift-induced miscalibration here
-  would need a genuinely different predictive distribution (e.g. a
-  Student-t output head), not a post-hoc correction — untested here.
-- The persistent gap to the oracle ceiling, shared by every adaptive method
-  tested — including properly-tuned robust IRLS — suggests the bottleneck
-  isn't the fusion rule's shape after all, but the small number of sensors:
-  robust statistics and cross-sensor learned features both need a
-  meaningful "committee" to extract disagreement signal from, and 3 is a
-  thin margin. Testing with more sensors (the simulator supports changing
-  `N_SENSORS` in `configs/default.py`, though `data/simulate.py`'s
-  degraded-sensor and bias logic assumes 3 and would need generalizing) is
-  the most promising untested direction, not attempted here.
+- The learned model does not outperform a two-line non-learned heuristic on
+  raw accuracy or sensor identification in the nominal sweep (see "Tier 1
+  finding"). The shuffled-variance ablation shows the learned variances carry
+  real information, but not more than the quality signal already does.
+- Neither cross-sensor attempt (residual feature, Huber/Tukey IRLS) beat the
+  heuristic. With three sensors there is little redundancy to exploit; testing
+  with more sensors is untested here (the simulator's degraded-sensor and bias
+  logic assumes three and would need generalizing).
+- **Separate network instances.** v1, v2, v1 + IRLS and the ablation variants are
+  trained as separate instances, so differences of a few thousandths of RMSE
+  (for example 0.7054 vs. 0.7043, or 0.7054 vs. 0.7020) are not interpreted.
+- **Evaluation-draw noise** of about 0.01-0.02 RMSE: the same method gives
+  slightly different values on the sweep set and the shift set (Quality WLS at
+  `d = 0.5`: 0.654 vs. 0.678).
+- **Sensor-ID metric** uses an `argmax` that includes dropped sensors, so it is
+  descriptive and depressed when another sensor is missing; this also explains
+  the lower IRLS values. The v1 + IRLS sensor-ID entry is seed 0 only.
+- **Missing controls:** no clipped-heuristic control (the bounded-variance
+  explanation of the shift results is untested), no shared network with a
+  sensor-index input (ablation C is confounded), and no test of the Tier-1
+  explanations directly.
+- **All-dropped samples** (probability (1+d) x 0.075%) are handled differently by
+  the WLS methods and by learned fusion.
+- Reported standard deviations are population standard deviations (`ddof=0`)
+  over 5 seeds.
+- Fully synthetic data: absolute numbers do not transfer, only the methodology
+  and qualitative findings. The quality proxy is a strong, always-present
+  feature; real self-diagnostics are often less reliable.
+- Single-shot (per-instance) fusion, not a temporal filter. No hyperparameter
+  search was done. A real-data evaluation is a natural next step.
+- Tier 2 (shift taxonomy, calibration curves, ablations) and both follow-ups
+  were run on the NumPy engine only. The PyTorch run covers the core pipeline
+  and does not include the heuristic baseline; its learned-fusion baseline
+  differs from the NumPy one (0.991 vs. 1.065 mean RMSE).
+- A scalar recalibration cannot fix a shape mismatch; a different predictive
+  distribution (for example a Student-t output head) is untested.
+
+## Paper-to-code map
+
+| Paper content | Script | Results file |
+|---|---|---|
+| Baseline ladder, sweep, sensor-ID, uncertainty-error correlation | `experiments/run_experiments.py` | `results/numpy/results_summary.json` |
+| Cross-sensor feature | `experiments/followup_cross_sensor.py` | `results/numpy/followup_cross_sensor/followup_results.json` |
+| Huber/Tukey IRLS | `experiments/followup_robust_fusion.py` | `results/numpy/followup_robust_fusion/followup_robust_results.json` |
+| Shift taxonomy | `experiments/tier2_shift_taxonomy.py` | `results/numpy/tier2_shift_taxonomy/tier2_shift_results.json` |
+| Calibration, sharpness, recalibration | `experiments/tier2_calibration.py` | `results/numpy/tier2_calibration/tier2_calibration_results.json` |
+| Ablations A, B, C | `experiments/tier2_ablations.py` | `results/numpy/tier2_ablations/tier2_ablations_results.json` |
