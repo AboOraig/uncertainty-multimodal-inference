@@ -149,7 +149,7 @@ def main(engine_name):
     ax.axvline(TRAIN_D_RANGE[1], color="gray", linestyle=":", alpha=0.5, label="edge of training range")
     ax.set_xlabel("Degradation level d")
     ax.set_ylabel("Calibration ECE (NEES-based)")
-    ax.set_title("Tier 2 — calibration error across the FULL degradation sweep\n(mean ± std across seeds)", fontsize=11)
+    ax.set_title("Calibration error across the FULL degradation sweep\n(mean ± std across seeds)", fontsize=11)
     ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(os.path.join(out_dir, "tier2_ece_vs_degradation.png"), dpi=150)
@@ -164,7 +164,7 @@ def main(engine_name):
     ax.axvline(TRAIN_D_RANGE[1], color="gray", linestyle=":", alpha=0.5, label="edge of training range")
     ax.set_xlabel("Degradation level d")
     ax.set_ylabel("Sharpness: median predicted std")
-    ax.set_title("Tier 2 — sharpness across the full degradation sweep\n"
+    ax.set_title("Sharpness across the full degradation sweep\n"
                  "(companion to ECE: calibration alone is gameable by trivially wide intervals)", fontsize=10.5)
     ax.legend(fontsize=8)
     fig.tight_layout()

@@ -40,11 +40,11 @@ def plot_graph1_uncertainty_vs_error(pred_std_flat, actual_err_flat, corr_mean, 
     ax.plot(bin_x, bin_y, "o-", color="darkorange", label="binned mean ± std")
     ax.fill_between(bin_x, bin_y - bin_y_std, bin_y + bin_y_std, color="darkorange", alpha=0.2)
     lims = [0, max(pred_std_flat.max(), actual_err_flat.max()) * 0.6]
-    ax.plot(lims, lims, "k--", alpha=0.5, label="y = x (ideal)")
+    ax.plot(lims, lims, "k--", alpha=0.5, label="y = x")
     ax.set_xlabel("Predicted per-sensor uncertainty (std)")
     ax.set_ylabel("Actual per-sensor observation error")
     ax.set_title(
-        f"Graph 1 — Exp. A: predicted uncertainty vs actual error\n"
+        f"Predicted uncertainty vs actual error\n"
         f"Pearson r = {corr_mean['pearson_r']:.3f} ± {corr_std['pearson_r']:.3f}, "
         f"Spearman ρ = {corr_mean['spearman_rho']:.3f} ± {corr_std['spearman_rho']:.3f}\n"
         f"(mean ± std across seeds)", fontsize=11
@@ -96,7 +96,7 @@ def plot_graph2_rmse_vs_degradation(
     ax.axvline(train_d_max, color="gray", linestyle=":", alpha=0.5)
     ax.set_xlabel("Degradation level d")
     ax.set_ylabel("Estimation RMSE")
-    ax.set_title(f"Graph 2 — Estimation error vs sensor degradation\n"
+    ax.set_title(f"Estimation error vs sensor degradation\n"
                  f"(learned methods: mean ± std across {len(rmse_unc_aware_std)}-point sweep, 5 seeds)")
     ax.legend(fontsize=7.5, loc="upper left")
     fig.tight_layout()
@@ -115,7 +115,7 @@ def plot_graph3_calibration_shift(nom_p, nom_emp_mean, nom_emp_std, ece_id_mean,
           label=f"shifted regime (ECE={ece_shift_mean:.3f}±{ece_shift_std:.3f})")
     ax.set_xlabel("Nominal confidence level")
     ax.set_ylabel("Empirical coverage (NEES ≤ χ²(df=2) quantile)")
-    ax.set_title(f"Graph 3 — Exp. D: calibration under distribution shift\n"
+    ax.set_title(f"Calibration under distribution shift\n"
                  f"(fixed degradation d={d_fixed}, mean ± std across seeds)")
     ax.legend()
     fig.tight_layout()

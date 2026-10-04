@@ -145,7 +145,7 @@ def main(engine_name):
         _band(ax, d_sweep, r["rmse_mean"], r["rmse_std"], marker="^", color=colors[name], label=labels[name])
     ax.set_xlabel("Degradation level d")
     ax.set_ylabel("Estimation RMSE")
-    ax.set_title("Tier 2 ablations — quality feature, NLL objective, weight sharing\n(mean ± std across seeds)",
+    ax.set_title("Ablations — quality feature, NLL objective, weight sharing\n(mean ± std across seeds)",
                  fontsize=11)
     ax.legend(fontsize=7.5)
     fig.tight_layout()
