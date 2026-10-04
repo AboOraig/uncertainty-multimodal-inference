@@ -1,5 +1,7 @@
 # Uncertainty-Aware Multimodal Inference under Sensor Degradation
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A controlled study of multimodal state estimation from heterogeneous, unreliable
 sensors: does a **learned per-modality uncertainty model**, plugged into a
 structured (precision-weighted) fusion rule, actually improve estimation
@@ -586,3 +588,7 @@ All simulation, training, and experiment hyperparameters live in
 | Shift taxonomy | `experiments/tier2_shift_taxonomy.py` | `results/numpy/tier2_shift_taxonomy/tier2_shift_results.json` |
 | Calibration, sharpness, recalibration | `experiments/tier2_calibration.py` | `results/numpy/tier2_calibration/tier2_calibration_results.json` |
 | Ablations A, B, C | `experiments/tier2_ablations.py` | `results/numpy/tier2_ablations/tier2_ablations_results.json` |
+
+## License
+
+This project is released under the [MIT License](LICENSE).
